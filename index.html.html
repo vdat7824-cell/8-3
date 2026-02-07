@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>8/3 Heart Tree - Romantic Piano Edition</title>
+    <style>
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; 
+            background: radial-gradient(circle at 75% 60%, #fff9f0, #ffe4e1, #ffd1dc);
+            font-family: 'Segoe UI', Arial, sans-serif; cursor: pointer; 
+        }
+        
+        #hint { 
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            color: #d32f2f; font-size: 26px; font-weight: bold; text-align: center; 
+            z-index: 1000; animation: pulse 1.5s infinite; pointer-events: none;
+            text-shadow: 1px 1px 3px rgba(255,255,255,0.8);
+        }
+        @keyframes pulse { 0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; } 50% { transform: translate(-50%, -50%) scale(1.1); opacity: 0.7; } }
+        
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
+
+        /* Vùng chứa lời chúc */
+        #text-box { position: absolute; top: 8%; left: 6%; width: 40%; z-index: 10; pointer-events: none; }
+        .msg { font-size: 19px; color: #333; line-height: 1.8; margin-bottom: 20px; opacity: 0; transform: translateY(20px); transition: 1.5s ease; }
+        .msg.active { opacity: 1; transform: translateY(0); }
+        .sig { font-weight: bold; color: #d32f2f; margin-top: 30px; text-align: right; }
+
+        /* Khung ảnh trang trí */
+        #image-container { position: absolute; top: 58%; left: 6%; width: 40%; display: flex; justify-content: space-between; z-index: 10; pointer-events: none; }
+        .photo-frame {
+            width: 48%; aspect-ratio: 1 / 1; background-color: #fff;
+            border: 6px solid #ffffff; border-radius: 16px; overflow: hidden;
+            box-shadow: 0 0 0 4px #ffc1cb, 0 10px 25px rgba(255, 105, 135, 0.3);
+            opacity: 0; transform: translateY(50px) scale(0.9) rotate(0deg);
+            transition: all 1.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .photo-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        #p1.active { opacity: 1; transform: translateY(0) scale(1) rotate(-4deg); }
+        #p2.active { opacity: 1; transform: translateY(0) scale(1) rotate(4deg); }
+    </style>
+</head>
+<body>
+
+    <audio id="myAudio" loop>
+        <source src="https://sidsiffpiano.com/wp-content/uploads/2021/10/Yiruma-이루마-River-Flows-in-You.mp3" type="audio/mpeg">
+    </audio>
+
+    <div id="hint">❤️ CHẠM ĐỂ BẬT NHẠC VÀ XEM QUÀ ❤️<br><small style="font-size:14px; font-weight:normal; color:#666;">(Giai điệu lãng mạn đang chờ cậu...)</small></div>
+
+    <div id="text-box">
+        <div class="msg" id="m1">Chúc mừng 8/3 đến những bông hoa rực rỡ đã làm bạn với tớ những năm tháng qua!!</div>
+        <div class="msg" id="m2">Dù cậu là ai, đang ở đâu. Mới quen hay là bạn học cũ nè, tớ đều nhớ tới các cậu và gửi các cậu bức thư siêu siêu cute này.</div>
+        <div class="msg" id="m3">Nhân ngày 8/3 này, tớ xin chúc các cậu mãi xinh đẹp, đáng yêu, luôn hạnh phúc và nụ cười luôn tỏa sáng hơn cả ánh mặt trời nhé!</div>
+        <div class="msg sig" id="m4">-- Your friend AOF --</div>
+    </div>
+
+    <div id="image-container">
+        <div class="photo-frame" id="p1"><img src="anh1.jpg" alt="Ảnh 1"></div>
+        <div class="photo-frame" id="p2"><img src="anh2.jpg" alt="Ảnh 2"></div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const cvs = document.getElementById('canvas');
+        const ctx = cvs.getContext('2d');
+        const audio = document.getElementById('myAudio');
+        let w, h, treeX, groundY, canopyY, scale;
+        let particles = [], groundFlowers = [], state = 'waiting'; 
+        let seed = { x: 0, y: -50, speed: 2.2 }, treeGrow = 0, started = false;
+
+        const colors = ['#ff4d6d', '#ff758f', '#ff8fa3', '#ff0000', '#ff9e00', '#ffd000', '#f06292'];
+
+        function init() {
+            w = cvs.width = window.innerWidth; h = cvs.height = window.innerHeight;
+            treeX = w * 0.75; groundY = h * 0.94; canopyY = h * 0.28;
+            scale = Math.min(w, h) / 38; seed.x = treeX;
+        }
+        window.addEventListener('resize', init); init();
+
+        function getHeartPoint(t, r) {
+            let x = 16 * Math.pow(Math.sin(t), 3);
+            let y = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+            return { x: x * r * scale, y: y * scale * r };
+        }
+
+        class GroundFlower {
+            constructor() {
+                this.x = treeX + (Math.random() * 200 - 100); this.y = groundY + Math.random() * 25 - 10;
+                this.size = Math.random() * 6 + 4; this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.opacity = 0;
+            }
+            draw() { if (this.opacity < 1) this.opacity += 0.02; ctx.save(); ctx.globalAlpha = this.opacity; ctx.fillStyle = this.color; ctx.translate(this.x, this.y); ctx.beginPath(); ctx.moveTo(0, 0); ctx.bezierCurveTo(-this.size/2, -this.size/2, -this.size, 0, 0, this.size); ctx.bezierCurveTo(this.size, 0, this.size/2, -this.size/2, 0, 0); ctx.fill(); ctx.restore(); }
+        }
+
+        class Heart {
+            constructor(spawn) { this.reset(spawn); }
+            reset(spawn) {
+                this.t = Math.random() * Math.PI * 2; this.r = Math.sqrt(Math.random());
+                const pos = getHeartPoint(this.t, this.r); this.targetX = treeX + pos.x; this.targetY = canopyY + pos.y;
+                this.x = treeX; this.y = spawn ? h * 0.6 : canopyY; this.size = Math.random() * 8 + 5;
+                this.color = colors[Math.floor(Math.random() * colors.length)]; this.opacity = 0;
+                this.speed = Math.random() * 0.01 + 0.005; this.state = 'fly'; 
+                this.velY = Math.random() * 0.8 + 0.4; this.velX = Math.random() * 1.5 - 0.75;
+                this.wobble = Math.random() * Math.PI * 2; this.landedY = groundY + Math.random() * 20 - 5;
+            }
+            update() {
+                if (this.state === 'fly') {
+                    this.x += (this.targetX - this.x) * this.speed; this.y += (this.targetY - this.y) * this.speed;
+                    if (this.opacity < 1) this.opacity += 0.015; if (Math.abs(this.x - this.targetX) < 1) this.state = 'stay';
+                } else if (this.state === 'stay') { if (Math.random() < 0.0018) this.state = 'fall';
+                } else if (this.state === 'fall') {
+                    this.y += this.velY; this.x += Math.sin(this.wobble) * 2 + this.velX; this.wobble += 0.04;
+                    if (this.y >= this.landedY) { this.y = this.landedY; this.state = 'landed'; }
+                } else if (this.state === 'landed') { this.opacity -= 0.003; if (this.opacity <= 0) this.reset(false); }
+            }
+            draw() { ctx.save(); ctx.globalAlpha = this.opacity; ctx.fillStyle = this.color; ctx.translate(this.x, this.y); if(this.state !== 'landed') ctx.rotate(Math.sin(this.wobble) * 0.2); ctx.beginPath(); ctx.moveTo(0, 0); ctx.bezierCurveTo(-this.size/2, -this.size/2, -this.size, 0, 0, this.size); ctx.bezierCurveTo(this.size, 0, this.size/2, -this.size/2, 0, 0); ctx.fill(); ctx.restore(); }
+        }
+
+        function drawTree() {
+            let tipY = groundY - (groundY - canopyY) * treeGrow; ctx.fillStyle = '#4a3121';
+            let baseW = 140; let midW = 45; let topW = 20;  
+            ctx.beginPath(); ctx.moveTo(treeX - baseW/2, groundY + 20);
+            ctx.bezierCurveTo(treeX - baseW/2 + 30, groundY - 50, treeX - midW, (groundY+tipY)/2, treeX - topW/2, tipY);
+            ctx.lineTo(treeX + topW/2, tipY);
+            ctx.bezierCurveTo(treeX + midW, (groundY+tipY)/2, treeX + baseW/2 - 30, groundY - 50, treeX + baseW/2, groundY + 20);
+            ctx.fill();
+            if (treeGrow > 0.3) {
+                drawOrganicBranch(treeX, groundY - (groundY - canopyY) * 0.5, treeX - 80, groundY - (groundY - canopyY) * 0.55, treeX - 160, groundY - (groundY - canopyY) * 0.8, 18, treeGrow - 0.3);
+                drawOrganicBranch(treeX, groundY - (groundY - canopyY) * 0.6, treeX + 70, groundY - (groundY - canopyY) * 0.7, treeX + 150, groundY - (groundY - canopyY) * 0.85, 16, treeGrow - 0.3);
+            }
+            if (treeGrow > 0.5) {
+                drawOrganicBranch(treeX - 50, groundY - (groundY - canopyY) * 0.65, treeX - 100, groundY - (groundY - canopyY) * 0.75, treeX - 120, groundY - (groundY - canopyY) * 0.95, 10, treeGrow - 0.5);
+                drawOrganicBranch(treeX + 40, groundY - (groundY - canopyY) * 0.72, treeX + 90, groundY - (groundY - canopyY) * 0.82, treeX + 110, groundY - (groundY - canopyY) * 1.0, 8, treeGrow - 0.5);
+            }
+        }
+        function drawOrganicBranch(x1, y1, cp1x, cp1y, x2, y2, maxW, progress) {
+            let p = Math.min(progress * 1.5, 1); if (p <= 0) return;
+            let curX2 = x1 + (x2 - x1) * p; let curY2 = y1 + (y2 - y1) * p;
+            let curCp1x = x1 + (cp1x - x1) * p; let curCp1y = y1 + (cp1y - y1) * p;
+            ctx.lineWidth = maxW * (1 - p * 0.3); ctx.lineCap = 'round'; ctx.strokeStyle = '#4a3121';
+            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(curCp1x, curCp1y, curX2, curY2); ctx.stroke();
+        }
+
+        function showContent() {
+            const times = [500, 6000, 12000, 19000];
+            [1,2,3,4].forEach((n, i) => {
+                setTimeout(() => { const el = document.getElementById('m' + n); if(el) el.classList.add('active'); }, times[i]);
+            });
+            setTimeout(() => { document.getElementById('p1').classList.add('active'); }, 800);
+            setTimeout(() => { document.getElementById('p2').classList.add('active'); }, 2000);
+            for(let i = 0; i < 60; i++) { setTimeout(() => { groundFlowers.push(new GroundFlower()); }, i * 100); }
+        }
+
+        function loop() {
+            ctx.clearRect(0, 0, w, h); groundFlowers.forEach(gf => gf.draw());
+            if (state === 'falling_seed') {
+                ctx.fillStyle = '#ff0000'; ctx.beginPath(); ctx.arc(seed.x, seed.y, 10, 0, Math.PI * 2); ctx.fill();
+                seed.y += seed.speed; if (seed.y >= groundY) state = 'growing_tree';
+            } else if (state === 'growing_tree') {
+                drawTree(); treeGrow += 0.0035; 
+                if (treeGrow >= 1) { state = 'blooming'; showContent(); for (let i = 0; i < 2600; i++) { setTimeout(() => particles.push(new Heart(true)), i * 1.2); } }
+            } else if (state === 'blooming') { drawTree(); particles.forEach(p => { p.update(); p.draw(); }); }
+            requestAnimationFrame(loop);
+        }
+
+        window.addEventListener('click', function() {
+            if (started) return; started = true;
+            audio.play().catch(e => console.log("Lỗi nhạc:", e));
+            document.getElementById('hint').style.display = 'none'; state = 'falling_seed';
+        });
+        loop(); 
+    </script>
+</body>
+</html>
